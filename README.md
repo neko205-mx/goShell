@@ -4,4 +4,6 @@
 
 函数使用
 
-- OpenShell 传入端口
+- OpenShell 传入端口和 0.0.0.0:port
+- reShell 传入ip和端口 reShell("127.0.0.1", "8083")
+- 
